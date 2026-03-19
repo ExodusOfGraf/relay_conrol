@@ -7,29 +7,20 @@ app = FastAPI()
 
 instrument = None
 PORT = 'COM3'
-ID = 1
-# --- Модель данных для управления реле ---
+ID = 1 #временно, пока не реализую нормальную систему поиска и смены id для подключ.
+
+
+# --- Модель для управления реле ---
 class RelayControl(BaseModel):
     relay_num: int
     state: bool
 
+class IDChange(BaseModel):
+    new_id: int
 # --- Функции  ---
 
-def get_instrument():
-    global instrument
-    if instrument is None:
-        try:
-            instrument = minimalmodbus.Instrument(PORT, ID)
-            instrument.serial.baudrate = 9600
-            # Увеличиваем таймаут для стабильности
-            instrument.serial.timeout = 0.2 
-            instrument.mode = minimalmodbus.MODE_RTU
-        except Exception as e:
-            print(f"Ошибка инициализации порта: {e}")
-    return instrument
-
 def scan_ids():
-    #print("Сканирование устройств на порту {PORT}...".format(PORT))
+    
     found_id = {}
     for slave_id in range(1, 247):
         try:
@@ -51,7 +42,6 @@ def scan_ids():
 def get_instrument():
     global instrument
     if instrument is None:
-        # для testa fix on ID=1
         try:
             instrument = minimalmodbus.Instrument(PORT, ID)
             instrument.serial.baudrate = 9600
@@ -178,8 +168,33 @@ def id_scan():
              }
      except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+     
+@app.post("/id/set_id")
+def set_id(data: IDChange):
+    """Установка нового ID """
+    
+    global ID
+    
+    #inst = get_instrument()
+
+    if not (1 <= data.new_id <= 247):
+        raise HTTPException(status_code=400, detail="ID должен быть от 1 до 247")
+    
+    ID = data.new_id
+        
+    inst = get_instrument()
+    if inst == True:
+        inst.address = ID
+
+        return {
+        "status": "success", 
+        "message": f"ID изменён на {data.new_id}"
+        }
+    else:
+        #print("Ошибка подкл")
+        raise HTTPException(status_code=500, detail="Ошибка подключения к устройству. Проверьте порт и ID.")
+
 
 if __name__ == "__main__":
     import uvicorn
-    # на порту 8000
     uvicorn.run(app, host="127.0.0.1", port=8000)
